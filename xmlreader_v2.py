@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, StringVar, IntVar
 from tkhtmlview import HTMLLabel
 import xml.etree.ElementTree as ET
 import tempfile
@@ -8,8 +8,6 @@ import base64
 import os
 import io
 import zipfile
-
-# === Funkcje pomocnicze (niezmienione) ===
 
 def strip_ns(tag):
     return tag.split('}', 1)[1] if '}' in tag else tag
@@ -78,7 +76,6 @@ def guess_extension_from_bytes(data_bytes):
     else:
         return '.nieznany'
 
-
 def extract_all_text_elements(root):
     attachments = []
     lines = []
@@ -88,7 +85,6 @@ def extract_all_text_elements(root):
         text = (elem.text or "").strip()
 
         if text and is_base64_string(text):
-            # Załącznik — nie zmieniamy
             filename = elem.attrib.get("NazwaPliku") or elem.attrib.get("Nazwa") or f"zalacznik_{len(attachments) + 1}"
             b64_clean = "".join(text.split())
             try:
@@ -108,13 +104,10 @@ def extract_all_text_elements(root):
         elif text:
             indent = "  " * depth
             if tag == "Informacja":
-                # Traktuj jako nagłówek sekcji
                 lines.append(f"{indent}## {text}")
             elif ':' in text:
-                # Jeśli już jest w formacie "Etykieta: Wartość", nie dodawaj tagu
                 lines.append(f"{indent}{text}")
             else:
-                # W innych przypadkach dodaj nazwę tagu
                 lines.append(f"{indent}{tag}: {text}")
 
         for child in elem:
@@ -123,10 +116,7 @@ def extract_all_text_elements(root):
     recurse(root)
     return lines, attachments
 
-
-
-
-def generate_html_from_text_lines(lines, filename=None):
+def generate_html_from_text_lines(lines, filename=None, font_family="Arial", font_size=16):
     filtered_lines = [line for line in lines if line.strip()]
     content_blocks = "\n".join(
         f"""<div class="mainTxtContainer"><pre class="mainTxt">{line}</pre></div>"""
@@ -138,8 +128,8 @@ def generate_html_from_text_lines(lines, filename=None):
     <head>
         <meta charset="utf-8">
         <style>
-            .mainTxt {{ font-family: Arial; font-size: 16px; margin-bottom: 10px; margin: 0; }}
-            body {{ margin: 0; padding: 10px;  font-family: Arial; background: #f0f0f0; }}
+            .mainTxt {{ font-family: {font_family}; font-size: {font_size}px; margin-bottom: 10px; margin: 0; }}
+            body {{ margin: 0; padding: 10px; font-family: {font_family}; background: #f0f0f0; }}
         </style>
     </head>
     <body>
@@ -151,8 +141,6 @@ def generate_html_from_text_lines(lines, filename=None):
     </html>
     """
     return html
-
-# === Główna klasa aplikacji ===
 
 class XMLViewerApp:
     def __init__(self, root):
@@ -172,14 +160,27 @@ class XMLViewerApp:
         self.print_button = ctk.CTkButton(self.frame, text="🖨 Podgląd do wydruku", command=self.print_html)
         self.print_button.pack(pady=5)
 
+        # Czcionka: wybór rodziny i rozmiaru
+        font_controls_frame = ctk.CTkFrame(self.frame)
+        font_controls_frame.pack(pady=(10, 5))
+
+        self.font_family_var = StringVar(value="Arial")
+        self.font_size_var = IntVar(value=16)
+
+        font_options = ["Arial", "Courier New", "Times New Roman", "Verdana", "Tahoma", "Helvetica", "Consolas"]
+        font_size_options = [10, 12, 14, 16, 18, 20, 22, 24]
+
+        ctk.CTkLabel(font_controls_frame, text="Czcionka:").pack(side="left", padx=5)
+        ctk.CTkOptionMenu(font_controls_frame, variable=self.font_family_var, values=font_options, command=self.update_html_font).pack(side="left", padx=5)
+        ctk.CTkLabel(font_controls_frame, text="Rozmiar:").pack(side="left", padx=5)
+        ctk.CTkOptionMenu(font_controls_frame, variable=self.font_size_var, values=[str(s) for s in font_size_options], command=self.update_html_font).pack(side="left", padx=5)
+
         self.attachments_info_label = ctk.CTkLabel(self.frame, text="", font=("Arial", 14), anchor="w", justify="left", wraplength=1400)
         self.attachments_info_label.pack(fill="x", padx=10, pady=(10, 10))
 
-        # HTML podgląd
         self.html_frame = ctk.CTkFrame(self.frame, fg_color="white")
         self.html_frame.pack(fill="both", expand=True)
 
-        # self.html_view = HTMLLabel(self.html_frame, html="<p>Tu pojawi się podgląd dokumentu</p>", background="white")
         self.html_view = HTMLLabel(
             self.html_frame,
             html="<p>Tu pojawi się podgląd dokumentu</p>",
@@ -194,6 +195,8 @@ class XMLViewerApp:
 
         self.current_html = ""
         self.attachments = []
+        self.text_lines = []
+        self.filename = ""
 
     def load_xml(self):
         file_path = filedialog.askopenfilename(filetypes=[("Pliki XML", "*.xml")])
@@ -204,11 +207,21 @@ class XMLViewerApp:
             tree = ET.parse(file_path)
             root = tree.getroot()
             lines, attachments = extract_all_text_elements(root)
-            filename = os.path.basename(file_path)
-            html = generate_html_from_text_lines(lines, filename=filename)
-            self.current_html = html
+
+            self.text_lines = lines
+            self.filename = os.path.basename(file_path)
             self.attachments = attachments
+
+            html = generate_html_from_text_lines(
+                self.text_lines,
+                filename=self.filename,
+                font_family=self.font_family_var.get(),
+                font_size=self.font_size_var.get()
+            )
+
+            self.current_html = html
             self.html_view.set_html(html)
+            self.html_view.fit_height()
 
             if attachments:
                 self.show_attachments_info()
@@ -219,6 +232,20 @@ class XMLViewerApp:
         except Exception as e:
             messagebox.showerror("Błąd", f"Błąd przetwarzania XML:\n{e}")
 
+    def update_html_font(self, _=None):
+        if not self.text_lines:
+            return
+
+        html = generate_html_from_text_lines(
+            self.text_lines,
+            filename=self.filename,
+            font_family=self.font_family_var.get(),
+            font_size=self.font_size_var.get()
+        )
+        self.current_html = html
+        self.html_view.set_html(html)
+        self.html_view.fit_height()
+
     def show_attachments_info(self):
         info_lines = ["📎 Dokument zawiera załączniki:\n"]
         for i, (filename, b64data) in enumerate(self.attachments, start=1):
@@ -228,8 +255,7 @@ class XMLViewerApp:
                 info_lines.append(f"{i}. {filename} ({ext})")
             except Exception:
                 info_lines.append(f"{i}. {filename} (nieznany typ)")
-        full_text = "\n".join(info_lines)
-        self.attachments_info_label.configure(text=full_text)
+        self.attachments_info_label.configure(text="\n".join(info_lines))
 
     def ask_save_attachments(self):
         folder = filedialog.askdirectory(title="Wybierz folder do zapisu załączników")
@@ -263,12 +289,7 @@ class XMLViewerApp:
             f.write(self.current_html)
             webbrowser.open(f.name)
 
-# === Uruchomienie ===
-
 if __name__ == "__main__":
     root = ctk.CTk()
     app = XMLViewerApp(root)
     root.mainloop()
-
-
-
