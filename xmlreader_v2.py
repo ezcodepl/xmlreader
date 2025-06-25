@@ -78,6 +78,7 @@ def guess_extension_from_bytes(data_bytes):
     else:
         return '.nieznany'
 
+
 def extract_all_text_elements(root):
     attachments = []
     lines = []
@@ -87,7 +88,8 @@ def extract_all_text_elements(root):
         text = (elem.text or "").strip()
 
         if text and is_base64_string(text):
-            filename = elem.attrib.get("NazwaPliku") or elem.attrib.get("Nazwa") or f"zalacznik_{len(attachments)+1}"
+            # Załącznik — nie zmieniamy
+            filename = elem.attrib.get("NazwaPliku") or elem.attrib.get("Nazwa") or f"zalacznik_{len(attachments) + 1}"
             b64_clean = "".join(text.split())
             try:
                 decoded_bytes = base64.b64decode(b64_clean)
@@ -102,15 +104,27 @@ def extract_all_text_elements(root):
             attachments.append((filename, text))
             indent = "  " * depth
             lines.append(f"{indent}{tag}: [Załącznik: {filename}]")
-        else:
-            if text:
-                indent = "  " * depth
+
+        elif text:
+            indent = "  " * depth
+            if tag == "Informacja":
+                # Traktuj jako nagłówek sekcji
+                lines.append(f"{indent}## {text}")
+            elif ':' in text:
+                # Jeśli już jest w formacie "Etykieta: Wartość", nie dodawaj tagu
+                lines.append(f"{indent}{text}")
+            else:
+                # W innych przypadkach dodaj nazwę tagu
                 lines.append(f"{indent}{tag}: {text}")
-            for child in elem:
-                recurse(child, depth + 1)
+
+        for child in elem:
+            recurse(child, depth)
 
     recurse(root)
     return lines, attachments
+
+
+
 
 def generate_html_from_text_lines(lines, filename=None):
     filtered_lines = [line for line in lines if line.strip()]
@@ -165,7 +179,16 @@ class XMLViewerApp:
         self.html_frame = ctk.CTkFrame(self.frame, fg_color="white")
         self.html_frame.pack(fill="both", expand=True)
 
-        self.html_view = HTMLLabel(self.html_frame, html="<p>Tu pojawi się podgląd dokumentu</p>", background="white")
+        # self.html_view = HTMLLabel(self.html_frame, html="<p>Tu pojawi się podgląd dokumentu</p>", background="white")
+        self.html_view = HTMLLabel(
+            self.html_frame,
+            html="<p>Tu pojawi się podgląd dokumentu</p>",
+            background="white",
+            foreground="black",
+            font=("Arial", 14),
+            padx=20,
+            pady=10
+        )
         self.html_view.pack(fill="both", expand=True, padx=5, pady=5)
         self.html_view.fit_height()
 
@@ -246,3 +269,6 @@ if __name__ == "__main__":
     root = ctk.CTk()
     app = XMLViewerApp(root)
     root.mainloop()
+
+
+
