@@ -139,6 +139,19 @@ def generate_html_from_text_lines(lines, filename=None, font="Arial", font_size=
         <h4>Zawartość pliku:</h4>
         {filename_display}
         {content_blocks}
+        <button onclick="window.print()" style="
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            font-size: 14px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            z-index: 1000;
+        ">🖨 Wydrukuj dokument</button>
     </body>
     </html>
     """
